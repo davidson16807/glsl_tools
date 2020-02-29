@@ -1,4 +1,5 @@
 import re
+import warnings
 
 import pypeg2
 from pypeg2 import attr, optional, maybe_some, blank, endl
@@ -7,7 +8,8 @@ single_quote_string_literal = re.compile("'([^']|\\\\')*'", re.MULTILINE | re.DO
 double_quote_string_literal = re.compile('"([^"]|\\\\")*"', re.MULTILINE | re.DOTALL)
 back_tick_string_literal = re.compile('`([^`]|\\\\`)*`', re.MULTILINE | re.DOTALL)
 inline_comment = re.compile('/\*((?!\*/).)*\*/\s*', re.MULTILINE | re.DOTALL)
-endline_comment = re.compile('//[^\n]*\s*', re.MULTILINE | re.DOTALL)
+endline_comment = re.compile('//[^\n]*\n\s*', re.MULTILINE | re.DOTALL)
+include_directive = re.compile('#[^\n]*\n', re.MULTILINE | re.DOTALL)
 int_literal = re.compile(
     '''
     (
@@ -69,6 +71,7 @@ element_attributes = [
     'comment1',
     'comment2',
     'comment3',
+    'comment4',
 ]
 
 '''
@@ -87,7 +90,7 @@ def warn_of_invalid_grammar_elements(element):
         try:
             pypeg2.compose(element, type(element))
         except ValueError as error:
-            warnings.warn(f'element of type "{type(element)}" is invalid: \n{debug(element, "  ")}')
+            warnings.warn(f'/*element of type "{type(element)}" is invalid: \n{debug(element, "  ")}*/')
         for attribute in element_attributes:
             if hasattr(element, attribute):
                 subelement = getattr(element, attribute)
@@ -153,6 +156,7 @@ class TernaryExpression(JsElement):
         self.comment1 = ''
         self.comment2 = ''
         self.comment3 = ''
+        self.comment4 = ''
 
 class PostIncrementExpression(UnaryExpression): pass
 class PreIncrementExpression(UnaryExpression): pass
@@ -204,8 +208,9 @@ class DoWhileStatement(JsElement): pass
 class ForStatement(JsElement): pass
 
 class ParameterDeclaration(JsElement): 
-    def __init__(self, name=''):
+    def __init__(self, name='', type_=None):
         self.name = name
+        self.type = type_
 class FunctionDeclaration(JsElement): 
     def __init__(self, name='', parameters=None, content=None, type_=None, documentation=None):
         self.documentation = documentation or []
@@ -261,14 +266,15 @@ binary_expression_or_less = [*unary_expression_or_less]
 for BinaryExpressionTemp, binary_regex in order_of_operations:
     binary_expression_or_less = [BinaryExpressionTemp, *binary_expression_or_less]
     BinaryExpressionTemp.grammar = (
-            attr('operand1', binary_expression_or_less[1:]), 
             attr('comment1', maybe_some([inline_comment, endline_comment])),
+            attr('operand1', binary_expression_or_less[1:]), 
+            attr('comment2', maybe_some([inline_comment, endline_comment])),
             blank,
             attr('operator', binary_regex), 
             blank,
-            attr('comment2', maybe_some([inline_comment, endline_comment])),
-            attr('operand2', binary_expression_or_less),
             attr('comment3', maybe_some([inline_comment, endline_comment])),
+            attr('operand2', binary_expression_or_less),
+            attr('comment4', maybe_some([inline_comment, endline_comment])),
         )
 
 ternary_expression_or_less = [TernaryExpression, *binary_expression_or_less]
@@ -310,8 +316,9 @@ simple_statement = ([
     re.compile('continue|break|discard'), ReturnStatement,
     VariableDeclaration, AssignmentExpression, PostfixExpression
 ], optional(';'), endl)
-code_block = maybe_some(
+code_block = pypeg2.some(
     [
+        include_directive,
         # first try functions: they're harder to parse, but we need 
         # to parse them before comments since they have their own comment docs
         FunctionDeclaration, 
@@ -322,8 +329,8 @@ code_block = maybe_some(
         IfStatement, 
         simple_statement,
         # next try standalone comments since they're quick to parse
-        (inline_comment, endl, endl), 
-        (endline_comment, endl, endl),
+        endline_comment,
+        inline_comment, 
     ]
 )
 compound_statement = ( '{', endl, pypeg2.indent(code_block), '}', endl )
@@ -351,7 +358,8 @@ ForStatement.grammar = (
 )
 
 ParameterDeclaration.grammar = (
-    attr('name', token) 
+    attr('type', optional(inline_comment, blank)), 
+    attr('name', token), 
 )
 FunctionDeclaration.grammar = (
     attr('documentation', maybe_some([inline_comment, endline_comment])), 

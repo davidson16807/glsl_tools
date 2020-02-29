@@ -27,7 +27,7 @@ def assert_type(variable, types):
         raise AssertionError(f'expected any of {types} but got {type(variable)} (value: {variable})')
 
 inline_comment = re.compile('/\*((?!\*/).)*\*/\s*', re.MULTILINE | re.DOTALL)
-endline_comment = re.compile('//[^\n]*\n', re.MULTILINE | re.DOTALL)
+endline_comment = re.compile('//[^\n]*\n\s*', re.MULTILINE | re.DOTALL)
 include_directive = re.compile('#[^\n]*\n', re.MULTILINE | re.DOTALL)
 int_literal = re.compile(
     '''
@@ -90,6 +90,7 @@ element_attributes = [
     'comment1',
     'comment2',
     'comment3',
+    'comment4',
 ]
 '''
 "warn_of_invalid_grammar_elements" recursively calls pypeg2.compose() 
@@ -174,6 +175,7 @@ class BinaryExpression(GlslElement):
         self.comment1 = ''
         self.comment2 = ''
         self.comment3 = ''
+        self.comment4 = ''
 
 class TernaryExpression(GlslElement): 
     def __init__(self, operand1 = None, operand2 = None, operand3 = None):
@@ -291,14 +293,15 @@ binary_expression_or_less = [*unary_expression_or_less]
 for BinaryExpressionTemp, binary_regex in order_of_operations:
     binary_expression_or_less = [BinaryExpressionTemp, *binary_expression_or_less]
     BinaryExpressionTemp.grammar = (
-            attr('operand1', binary_expression_or_less[1:]), 
             attr('comment1', maybe_some([inline_comment, endline_comment])),
+            attr('operand1', binary_expression_or_less[1:]), 
+            attr('comment2', maybe_some([inline_comment, endline_comment])),
             blank,
             attr('operator', binary_regex), 
             blank,
-            attr('comment2', maybe_some([inline_comment, endline_comment])),
-            attr('operand2', binary_expression_or_less),
             attr('comment3', maybe_some([inline_comment, endline_comment])),
+            attr('operand2', binary_expression_or_less),
+            attr('comment4', maybe_some([inline_comment, endline_comment])),
         )
 
 ternary_expression_or_less = [TernaryExpression, *binary_expression_or_less]
@@ -340,7 +343,7 @@ simple_statement = ([
 ], ';', endl)
 code_block = maybe_some(
     [
-        pypeg2.ignore(include_directive),
+        include_directive,
         inline_comment, 
         endline_comment,
         ForStatement, 
@@ -406,11 +409,11 @@ code = pypeg2.some(
         # to parse them before comments since they have their own comment docs
         StructureDeclaration, 
         FunctionDeclaration, 
-        # next try standalone comments since they're quick to parse
-        (inline_comment, endl, endl), 
-        (endline_comment, endl, endl),
         # last try variable declaration
         (VariableDeclaration, ';', endl),
+        # next try standalone comments since they're quick to parse
+        inline_comment, 
+        endline_comment,
     ]
 )
 
@@ -550,7 +553,7 @@ class LexicalScope:
                 for declaration in element.content:
                     if isinstance(declaration, VariableDeclaration):
                         for name in declaration.get_names():
-                            result[name] = declaration.type
+                            attribute_types[name] = declaration.type
                 result[element.name] = attribute_types
         return result
 
@@ -676,11 +679,11 @@ class LexicalScope:
                 operand1_str = pypeg2.compose(expression.operand1, type(expression.operand1))
                 operand2_str = pypeg2.compose(expression.operand2, type(expression.operand2))
                 if type1 == None:
-                    print(f'WARNING: could not deduce type for variable "{operand1_str}" \n\t{expression_str}')
+                    warnings.warn(f'could not deduce type for variable "{operand1_str}" \n\t{expression_str}')
                 elif type2 == None:
-                    print(f'WARNING: could not deduce type for variable "{operand2_str}" \n\t{expression_str}')
+                    warnings.warn(f'could not deduce type for variable "{operand2_str}" \n\t{expression_str}')
                 elif type1 != type2:
-                    print(f'WARNING: type mismatch, operation "{expression.operator}" was fed left operand of type "{type1}" and right hand operand of type "{type2}" \n\t{expression_str} ')
+                    warnings.warn(f'type mismatch, operation "{expression.operator}" was fed left operand of type "{type1}" and right hand operand of type "{type2}" \n\t{expression_str} ')
                 type_ = type1
         elif isinstance(expression, TernaryExpression):
             type1 = self.deduce_type(expression.operand2)
@@ -689,13 +692,13 @@ class LexicalScope:
             operand1_str = pypeg2.compose(expression.operand2, type(expression.operand2))
             operand2_str = pypeg2.compose(expression.operand3, type(expression.operand3))
             if type1 == None:
-                print(f'WARNING: could not deduce type for variable "{operand1_str}" \n\t{expression_str}')
+                warnings.warn(f'could not deduce type for variable "{operand1_str}" \n\t{expression_str}')
             elif type2 == None:
-                print(f'WARNING: could not deduce type for variable "{operand2_str}" \n\t{expression_str}')
+                warnings.warn(f'could not deduce type for variable "{operand2_str}" \n\t{expression_str}')
             elif type1 != type2:
                 expression_str = pypeg2.compose(expression, TernaryExpression)
-                print(f'WARNING: type mismatch, ternary operation takes a left hand operand of type "{type1}" and right hand operand of type "{type2} \n\t{expression_str}"')
-                print(self.variables)
+                warnings.warn(f'type mismatch, ternary operation takes a left hand operand of type "{type1}" and right hand operand of type "{type2} \n\t{expression_str}"')
+                warnings.warn(seariables)
             type_ = type1
         elif isinstance(expression, AssignmentExpression):
             type_ = self.deduce_type(expression.operand2)

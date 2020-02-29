@@ -207,7 +207,7 @@ def get_js_structure_declaration(glsl_structure, scope):
     for glsl_declaration in glsl_structure.content:
         for element in glsl_declaration.content:
             name = element if isinstance(element, str) else element.operand1
-            js_function.parameters.append(js.ParameterDeclaration(glsl_declaration.type, name, glsl_declaration.qualifiers))
+            js_function.parameters.append(js.ParameterDeclaration(name, f'/*{glsl_declaration.type}*/'))
             js_object.content.append(js.AttributeDeclaration(name,js.PostfixExpression([name]) ))
 
     js_function.content.append(
