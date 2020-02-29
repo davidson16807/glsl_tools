@@ -665,6 +665,8 @@ class LexicalScope:
             type_ = self.deduce_type(expression.content)
         elif isinstance(expression, UnaryExpression):
             type_ = self.deduce_type(expression.operand1)
+        elif isinstance(expression, RelationalExpression):
+            type_ = 'bool'
         elif isinstance(expression, BinaryExpression):
             type1 = self.deduce_type(expression.operand1)
             type2 = self.deduce_type(expression.operand2)
