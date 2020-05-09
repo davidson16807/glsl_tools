@@ -17,9 +17,11 @@ The following scripts are included:
 All scripts share a single common command line user interface, meant to resemble [sed](https://www.gnu.org/software/sed/manual/sed.html). 
 
 You can pass input to any script using pipes:
+
 `echo "float foo(float bar){return 2.0*bar;}" | python3 glsl_js.py`
 
 You can also transform entire files by specifying file names:
+
 `python3 glsl_js.py -f foo.glsl`
 
 If you want to replace the contents of a file, use the `-i` flag:
